@@ -1,0 +1,403 @@
+import React, { useState } from 'react';
+import {
+  Thermometer,
+  Droplet,
+  CloudRain,
+  Sun,
+  Activity,
+  Zap,
+  Power,
+  Sliders,
+  CheckCircle,
+  AlertTriangle,
+  Play,
+  Sprout,
+  MapPin,
+  Clock,
+  Layers,
+  Settings2,
+  Plus,
+  Wind,
+  Waves,
+  ArrowRight
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useApp } from '../context/AppContext.jsx';
+import SensorCard from '../components/SensorCard.jsx';
+import WaterbankGauge from '../components/WaterbankGauge.jsx';
+import WeatherCard from '../components/WeatherCard.jsx';
+import AIRecommendation from '../components/AIRecommendation.jsx';
+import LiveChart from '../components/LiveChart.jsx';
+import ConnectionIndicator from '../components/ConnectionIndicator.jsx';
+import ConfirmationModal from '../components/ConfirmationModal.jsx';
+import LiveLocationControl from '../components/LiveLocationControl.jsx';
+import FieldManagementModal from '../components/FieldManagementModal.jsx';
+import { formatLandArea } from '../utils/landArea.js';
+
+export default function DashboardPage() {
+  const {
+    sensorData,
+    telemetryHistory,
+    waterbank,
+    weather,
+    weatherLoading,
+    fetchWeather,
+    aiPrediction,
+    aiPredicting,
+    irrigationState,
+    triggerIrrigation,
+    emergencyStop,
+    currentPlant,
+    activeLand,
+    lands,
+    hydroponicData,
+    toggleHydroponicPump,
+    toggleHydroponicBuzzer,
+    mqttStatus
+  } = useApp();
+
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [targetDuration, setTargetDuration] = useState(600);
+  const [fieldModalOpen, setFieldModalOpen] = useState(false);
+
+  const calculateHst = (plantingDateStr) => {
+    if (!plantingDateStr) return 0;
+    const planting = new Date(plantingDateStr);
+    const now = new Date();
+    const diffTime = Math.abs(now - planting);
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  const hst = calculateHst(activeLand?.plantingDate);
+
+  const handleApplyRecommendation = (durationSec) => {
+    setTargetDuration(durationSec || 600);
+    setConfirmModalOpen(true);
+  };
+
+  const handleConfirmIrrigation = () => {
+    setConfirmModalOpen(false);
+    triggerIrrigation(true, true, targetDuration, 'AI_RECOMMENDATION');
+  };
+
+  return (
+    <div className="space-y-6 pb-16 lg:pb-6">
+      {/* 1. Header & Connectivity Status Bar */}
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-black font-mono tracking-tight text-[#F5F5F5] flex items-center gap-2">
+              <span>DASHBOARD OPERASIONAL</span>
+              <span className="text-[#FF7A00]">//</span>
+              <span className="text-sm font-normal text-[#8A9198]">
+                {activeLand?.name || 'Lahan Utama'}
+              </span>
+            </h1>
+            <p className="text-xs text-[#8A9198]">
+              Pusat monitoring telemetri sensor, cadangan air, dan rekomendasi irigasi cerdas.
+            </p>
+          </div>
+
+          {/* Quick Actuator Pill */}
+          <div className="flex items-center gap-2">
+            <div className={`px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-2 ${
+              irrigationState.isActive 
+                ? 'bg-[#22C55E]/10 border-[#22C55E]/30 text-[#22C55E]' 
+                : 'bg-[#141719] border-[#22272B] text-[#8A9198]'
+            }`}>
+              <Power className="w-3.5 h-3.5" />
+              <span>Pompa: {sensorData.pump ? 'ON' : 'OFF'}</span>
+            </div>
+
+            <div className={`px-3 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-2 ${
+              sensorData.valve 
+                ? 'bg-[#38BDF8]/10 border-[#38BDF8]/30 text-[#38BDF8]' 
+                : 'bg-[#141719] border-[#22272B] text-[#8A9198]'
+            }`}>
+              <Sliders className="w-3.5 h-3.5" />
+              <span>Valve: {sensorData.valve ? 'OPEN' : 'CLOSED'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 1.1 Active Land & Agronomic Summary Ribbon */}
+        <div className="bg-[#141719] border border-[#22272B] rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 font-mono">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-[#22C55E]/15 text-[#22C55E]">
+                <Sprout className="w-4 h-4" />
+              </span>
+              <div>
+                <span className="text-[10px] text-[#8A9198] uppercase block">Petak Lahan Aktif</span>
+                <span className="text-xs font-bold text-[#F5F5F5]">
+                  {activeLand?.name} ({activeLand?.customCropName || currentPlant.name})
+                </span>
+              </div>
+            </div>
+
+            <div className="h-6 w-px bg-[#22272B] hidden sm:block" />
+
+            <div className="flex items-center gap-1.5 text-xs text-[#38BDF8]">
+              <Clock className="w-3.5 h-3.5" />
+              <span>Usia: <strong>{hst} HST</strong> ({currentPlant.category})</span>
+            </div>
+
+            <div className="h-6 w-px bg-[#22272B] hidden sm:block" />
+
+            <div className="flex items-center gap-1.5 text-xs text-[#8A9198]">
+              <Layers className="w-3.5 h-3.5" />
+              <span>Luas: {formatLandArea(activeLand)} • Tanah {activeLand?.soilType || 'Lempung'}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end md:self-center">
+            <button
+              onClick={() => setFieldModalOpen(true)}
+              className="px-3 py-1.5 rounded-lg bg-[#1B1F21] hover:bg-[#282E33] border border-[#282E33] hover:border-[#FF7A00]/50 text-xs font-mono text-[#F5F5F5] hover:text-[#FF7A00] flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              <span>Ubah Tanaman / Lahan</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 1.2 Live GPS Location Dynamic Bar */}
+        <LiveLocationControl compact={false} />
+
+        {/* 1.3 Triple Connectivity Indicator Bar */}
+        <ConnectionIndicator />
+
+        {/* 1.4 Hydroponics MQTT Quick Hub */}
+        <div className="bg-[#141719] border border-[#22272B] rounded-2xl p-4 sm:p-5 relative overflow-hidden">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#22272B] pb-3.5 mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-[#0EA5E9]/15 text-[#38BDF8] border border-[#0EA5E9]/30">
+                <Waves className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-[#F5F5F5]">
+                    Sistem Hidroponik MQTT (ESP32)
+                  </h3>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                      mqttStatus === 'CONNECTED'
+                        ? 'bg-[#22C55E]/15 border-[#22C55E]/40 text-[#22C55E]'
+                        : 'bg-[#FF7A00]/15 border-[#FF7A00]/40 text-[#FF9A3D]'
+                    }`}
+                  >
+                    MQTT: {mqttStatus}
+                  </span>
+                </div>
+                <p className="text-xs text-[#8A9198] font-mono">
+                  DHT22 (GPIO 4), HC-SR04 (TRIG 5, ECHO 18), Relay Pompa (GPIO 26), Buzzer (GPIO 27)
+                </p>
+              </div>
+            </div>
+
+            <Link
+              to="/hidroponik"
+              className="px-3.5 py-1.5 rounded-xl bg-[#0EA5E9]/15 hover:bg-[#0EA5E9]/25 text-[#38BDF8] border border-[#0EA5E9]/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-all self-start sm:self-auto"
+            >
+              <span>Panel Hidroponik & Otomasi</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Water Tank */}
+            <div className="p-3 bg-[#0B0D0E] rounded-xl border border-[#22272B]">
+              <div className="text-[10px] text-[#8A9198] font-mono uppercase">Level Air Tandon</div>
+              <div className="text-lg font-black font-mono text-[#38BDF8] mt-0.5">
+                {hydroponicData.waterLevelPercent}%
+              </div>
+              <div className="text-[10px] text-[#8A9198] font-mono">
+                Jarak: {hydroponicData.jarak >= 0 ? `${hydroponicData.jarak} cm` : 'HC-SR04'}
+              </div>
+            </div>
+
+            {/* Suhu Udara DHT22 */}
+            <div className="p-3 bg-[#0B0D0E] rounded-xl border border-[#22272B]">
+              <div className="text-[10px] text-[#8A9198] font-mono uppercase">Suhu Udara (DHT22)</div>
+              <div className="text-lg font-black font-mono text-[#FF9A3D] mt-0.5">
+                {hydroponicData.suhu}°C
+              </div>
+              <div className="text-[10px] text-[#8A9198] font-mono">
+                Kelembapan: {hydroponicData.kelembapan}% RH
+              </div>
+            </div>
+
+            {/* Relay Pompa GPIO 26 */}
+            <div className="p-3 bg-[#0B0D0E] rounded-xl border border-[#22272B] flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] text-[#8A9198] font-mono uppercase">Pompa (GPIO 26)</div>
+                <div
+                  className={`text-xs font-mono font-bold mt-1 ${
+                    hydroponicData.relay ? 'text-[#0EA5E9]' : 'text-[#8A9198]'
+                  }`}
+                >
+                  {hydroponicData.relay ? 'MENYALA (ON)' : 'MATI (OFF)'}
+                </div>
+              </div>
+              <button
+                onClick={() => toggleHydroponicPump(!hydroponicData.relay)}
+                className={`mt-2 py-1 px-2 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                  hydroponicData.relay
+                    ? 'bg-[#EF4444] text-white hover:bg-[#DC2626]'
+                    : 'bg-[#0EA5E9] text-white hover:bg-[#0284C7]'
+                }`}
+              >
+                {hydroponicData.relay ? 'Matikan' : 'Nyalakan'}
+              </button>
+            </div>
+
+            {/* Buzzer Alarm GPIO 27 */}
+            <div className="p-3 bg-[#0B0D0E] rounded-xl border border-[#22272B] flex flex-col justify-between">
+              <div>
+                <div className="text-[10px] text-[#8A9198] font-mono uppercase">Buzzer (GPIO 27)</div>
+                <div
+                  className={`text-xs font-mono font-bold mt-1 ${
+                    hydroponicData.buzzer ? 'text-[#EF4444] animate-pulse' : 'text-[#8A9198]'
+                  }`}
+                >
+                  {hydroponicData.buzzer ? 'ALARM BUNYI' : 'SENYAP'}
+                </div>
+              </div>
+              <button
+                onClick={() => toggleHydroponicBuzzer(!hydroponicData.buzzer)}
+                className={`mt-2 py-1 px-2 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer ${
+                  hydroponicData.buzzer
+                    ? 'bg-[#EF4444] text-white hover:bg-[#DC2626]'
+                    : 'bg-[#22272B] text-[#F5F5F5] hover:bg-[#2A3136]'
+                }`}
+              >
+                {hydroponicData.buzzer ? 'Mute' : 'Uji Bunyi'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Key Sensor Telemetry Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Soil Moisture */}
+        <SensorCard
+          title="Kelembapan Tanah"
+          value={sensorData.soilMoisture || 0}
+          unit="%"
+          icon={Droplet}
+          status={
+            !sensorData.timestamp ? 'normal' :
+            sensorData.soilMoisture < currentPlant.criticalMoisture ? 'danger' :
+            sensorData.soilMoisture > currentPlant.optimalMoisture ? 'optimal' : 'normal'
+          }
+          statusLabel={
+            !sensorData.timestamp ? 'Standby (0%)' :
+            sensorData.soilMoisture < currentPlant.criticalMoisture ? 'Kritis Rendah' :
+            sensorData.soilMoisture > currentPlant.optimalMoisture ? 'Optimal Basah' : 'Cukup'
+          }
+          target={!sensorData.timestamp ? undefined : currentPlant.optimalMoisture}
+          accentColor="#FF7A00"
+          description="Kapasitif Analog ADC"
+        />
+
+        {/* Air Humidity (replacing Suhu Tanah) */}
+        <SensorCard
+          title="Kelembapan Udara"
+          value={sensorData.airHumidity || 0}
+          unit="%"
+          icon={Wind}
+          status={!sensorData.timestamp ? 'normal' : sensorData.airHumidity < 50 ? 'warning' : 'optimal'}
+          statusLabel={!sensorData.timestamp ? 'Standby (0%)' : `${sensorData.airHumidity}% RH`}
+          accentColor="#38BDF8"
+          description="Relatif Humidity (RH)"
+        />
+
+        {/* Air Temperature (BMKG API) */}
+        <SensorCard
+          title="Suhu Udara"
+          value={weather?.current?.temperature !== undefined ? Number(weather.current.temperature) : (sensorData.airTemperature || 0)}
+          unit="°C"
+          icon={Sun}
+          status={weatherLoading ? 'normal' : (weather?.current?.temperature || sensorData.airTemperature) > 33 ? 'warning' : 'optimal'}
+          statusLabel={weatherLoading ? 'Sinkronisasi...' : 'API BMKG'}
+          accentColor="#F59E0B"
+          description={weather?.location ? `BMKG: ${weather.location}` : 'API BMKG'}
+        />
+
+        {/* Rainfall / Curah Hujan (BMKG API) */}
+        <SensorCard
+          title="Curah Hujan"
+          value={weather?.current?.rainfall !== undefined ? Number(weather.current.rainfall) : (sensorData.rainfall || 0)}
+          unit="mm"
+          icon={CloudRain}
+          status={(weather?.current?.rainfall || sensorData.rainfall) > 0 ? 'optimal' : 'normal'}
+          statusLabel={weatherLoading ? 'Sinkronisasi...' : (weather?.current?.rainfall || sensorData.rainfall) > 0 ? 'Hujan BMKG' : 'Cerah (0 mm)'}
+          accentColor="#38BDF8"
+          description={weather?.current?.weatherDesc ? `BMKG: ${weather.current.weatherDesc}` : 'API BMKG'}
+        />
+      </div>
+
+      {/* 3. AI Recommendation & Waterbank Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: AI Recommendation Box (7 cols) */}
+        <div className="lg:col-span-7">
+          <AIRecommendation
+            prediction={aiPrediction}
+            isLoading={aiPredicting}
+            onApplyRecommendation={handleApplyRecommendation}
+          />
+        </div>
+
+        {/* Right Column: Interactive Waterbank Tank (5 cols) */}
+        <div className="lg:col-span-5">
+          <WaterbankGauge
+            percentage={waterbank.percentage}
+            currentVolume={waterbank.currentVolumeLiters}
+            capacity={waterbank.capacityLiters}
+            inflowRate={waterbank.inflowRateLpm}
+            consumptionRate={waterbank.consumptionLpm}
+            remainingDays={waterbank.remainingDays}
+            isMlPredicted={true}
+          />
+        </div>
+      </div>
+
+      {/* 4. Live Telemetry Chart */}
+      <div>
+        <LiveChart
+          data={telemetryHistory}
+          height={260}
+          title="Streaming Telemetri Real-Time Lahan & Tandon"
+        />
+      </div>
+
+      {/* 5. BMKG Weather Grounding Overview */}
+      <div>
+        <WeatherCard
+          weather={weather}
+          isLoading={weatherLoading}
+          onRefresh={fetchWeather}
+        />
+      </div>
+
+      {/* Confirmation Modal for Irrigation Execution */}
+      <ConfirmationModal
+        isOpen={confirmModalOpen}
+        title="Jalankan Irigasi Rekomendasi AI"
+        message={`Sistem akan mengaktifkan Pompa Air dan Solenoid Valve selama ${Math.round(targetDuration / 60)} menit (${targetDuration} detik) sesuai rekomendasi Edge ML untuk tanaman ${currentPlant.name}. Pastikan jalur irigasi bebas hambatan.`}
+        confirmText="Mulai Irigasi Sekarang"
+        cancelText="Batalkan"
+        onConfirm={handleConfirmIrrigation}
+        onCancel={() => setConfirmModalOpen(false)}
+        variant="warning"
+      />
+
+      {/* Field & Crop Management Modal */}
+      <FieldManagementModal
+        isOpen={fieldModalOpen}
+        onClose={() => setFieldModalOpen(false)}
+      />
+    </div>
+  );
+}
